@@ -166,6 +166,7 @@ router.get('/profile', requireAuth, async (req: AuthRequest, res, next) => {
 });
 
 // Create / update artisan profile (become provider)
+// Create / update artisan profile (become provider)
 router.post('/profile', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const data = z
@@ -194,7 +195,7 @@ router.post('/profile', requireAuth, async (req: AuthRequest, res, next) => {
         ...data,
         userId: req.userId!,
         verificationStatus: 'APPROVED', // auto-approve for MVP testing
-      },
+      } as any,
     });
 
     await prisma.user.update({
