@@ -18,6 +18,7 @@ class _OtpScreenState extends State<OtpScreen> {
   final _ctrl = TextEditingController();
   String? _target;
   String? _nextRoute;
+  bool _requestOtpOnEntry = true;
   bool _loading = false;
   bool _resending = false;
   String? _error;
@@ -34,13 +35,14 @@ class _OtpScreenState extends State<OtpScreen> {
         _target = args['target']?.toString();
         _nextRoute = args['next']?.toString() ?? '/role';
         _hint = args['demoCode']?.toString();
+        _requestOtpOnEntry = args['requestOtpOnEntry'] != false;
       } else if (args is String) {
         _target = args;
         _nextRoute = '/role';
       }
       _startTimer();
       // Request OTP if we landed here without a prior request
-      if (_target != null && _hint == null) {
+      if (_target != null && _hint == null && _requestOtpOnEntry) {
         _resend(silent: true);
       }
     }

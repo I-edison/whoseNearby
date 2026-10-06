@@ -54,14 +54,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
-      await AuthService.instance.register(
+      final registration = await AuthService.instance.register(
         fullName: name,
         identifier: id,
         password: pass,
         city: 'Lagos',
         area: 'Ikeja',
       );
-      final otpRes = await AuthService.instance.requestOtp(id);
       if (!mounted) return;
       Navigator.pushNamed(
         context,
@@ -69,7 +68,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         arguments: {
           'target': id,
           'next': '/role',
-          'demoCode': otpRes['code']?.toString(),
+          'demoCode': registration['code']?.toString(),
+          'requestOtpOnEntry': false,
         },
       );
     } on ApiException catch (e) {

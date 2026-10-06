@@ -10,6 +10,6 @@ class ApiConfig {
     'API_BASE_URL',
     // For phones on Wi-Fi, use your PC IP:
     // defaultValue: 'http://192.168.1.15:4000',
-    defaultValue: 'http://localhost:4000',
+    defaultValue: 'https://whosenearby-gyy3.onrender.com',
   );
 }
