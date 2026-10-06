@@ -1,0 +1,230 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Local:  provider = "sqlite"   DATABASE_URL="file:./dev.db"
+// Prod:   provider = "postgresql" DATABASE_URL="postgresql://user:pass@host:5432/whosenearby"
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  fullName     String
+  email        String?  @unique
+  phone        String?  @unique
+  passwordHash String
+  role         String   @default("CLIENT")
+  city         String?
+  area         String?
+  latitude     Float?
+  longitude    Float?
+  avatarLetter String?
+  avatarUrl    String?
+  coverUrl     String?
+  fcmToken     String?
+  blockedIds   String?  // JSON array of user ids this user blocked
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  artisanProfile ArtisanProfile?
+  wallet         Wallet?
+  bankAccount    BankAccount?
+  jobsAsClient   Job[]           @relation("ClientJobs")
+  messagesSent   Message[]       @relation("SentMessages")
+  ratingsGiven   Rating[]        @relation("RatingsGiven")
+  notifications  Notification[]
+  reportsFiled   Report[]        @relation("ReportsFiled")
+  disputesOpened Dispute[]       @relation("DisputesOpened")
+}
+
+model ArtisanProfile {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  businessName       String
+  primarySkill       String
+  skillsJson         String?  // JSON array of skills
+  bio                String?
+  hourlyRate         Float?
+  verificationStatus String   @default("NONE") // NONE | PENDING | APPROVED | REJECTED
+  verificationNote   String?
+  idDocUrl           String?
+  selfieUrl          String?
+  isAvailable        Boolean  @default(true)
+  jobsDone           Int      @default(0)
+  ratingAvg          Float    @default(0)
+  ratingCount        Int      @default(0)
+  portfolioJson      String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs     Job[]     @relation("ArtisanJobs")
+  ratings  Rating[]
+  disputes Dispute[]
+}
+
+model BankAccount {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  bankName      String
+  accountName   String
+  accountNumber String
+  bankCode      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Wallet {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  balance   Float    @default(0)
+  pinHash   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+model Job {
+  id             String    @id @default(cuid())
+  clientId       String
+  artisanId      String?
+  title          String
+  description    String?
+  category       String
+  budgetMin      Float?
+  budgetMax      Float?
+  agreedAmount   Float?
+  status         String    @default("OPEN")
+  // OPEN | NEGOTIATING | FUNDED | IN_PROGRESS | COMPLETED | CANCELLED | DISPUTED
+  completionCode String?
+  city           String?
+  area           String?
+  whenNeeded     String?
+  photosJson     String?   // JSON array of image URLs
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  startedAt      DateTime?
+  completedAt    DateTime?
+
+  client   User            @relation("ClientJobs", fields: [clientId], references: [id])
+  artisan  ArtisanProfile? @relation("ArtisanJobs", fields: [artisanId], references: [id])
+  messages Message[]
+  rating   Rating?
+  escrow   Transaction[]
+  dispute  Dispute?
+}
+
+model Message {
+  id          String    @id @default(cuid())
+  jobId       String
+  senderId    String
+  body        String
+  offerAmount Float?
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  job    Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  sender User @relation("SentMessages", fields: [senderId], references: [id])
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  walletId    String
+  jobId       String?
+  type        String
+  amount      Float
+  status      String   @default("PENDING")
+  description String?
+  externalRef String?  // Paystack reference etc.
+  createdAt   DateTime @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  job    Job?   @relation(fields: [jobId], references: [id])
+}
+
+model Rating {
+  id        String   @id @default(cuid())
+  jobId     String   @unique
+  artisanId String
+  clientId  String
+  stars     Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  job     Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  artisan ArtisanProfile @relation(fields: [artisanId], references: [id])
+  client  User           @relation("RatingsGiven", fields: [clientId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  type      String?
+  data      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  target    String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Dispute {
+  id          String   @id @default(cuid())
+  jobId       String   @unique
+  openedById  String
+  artisanId   String?
+  reason      String
+  status      String   @default("OPEN") // OPEN | RESOLVED_CLIENT | RESOLVED_ARTISAN | CLOSED
+  resolution  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  job       Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  openedBy  User            @relation("DisputesOpened", fields: [openedById], references: [id])
+  artisan   ArtisanProfile? @relation(fields: [artisanId], references: [id])
+}
+
+model Report {
+  id         String   @id @default(cuid())
+  reporterId String
+  targetId   String   // user id reported
+  jobId      String?
+  reason     String
+  status     String   @default("OPEN") // OPEN | REVIEWED | DISMISSED
+  createdAt  DateTime @default(now())
+
+  reporter User @relation("ReportsFiled", fields: [reporterId], references: [id])
+}
+
+
+model PendingSignup {
+  id           String   @id @default(cuid())
+  target       String   @unique
+  fullName     String
+  email        String?
+  phone        String?
+  passwordHash String
+  role         String   @default("CLIENT")
+  city         String?
+  area         String?
+  latitude     Float?
+  longitude    Float?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+}

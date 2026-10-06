@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WhoseNearby Admin</title>
+  <style>
+    :root {
+      --bg: #f4f7f5;
+      --card: #fff;
+      --ink: #0f1f17;
+      --muted: #5a6b62;
+      --line: #e2ebe6;
+      --primary: #1a5c42;
+      --primary2: #2a9468;
+      --danger: #c0392b;
+      --amber: #b78105;
+      --radius: 12px;
+      --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    header {
+      background: linear-gradient(135deg, var(--primary), var(--primary2));
+      color: #fff;
+      padding: 16px 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { margin: 0; font-size: 1.15rem; font-weight: 700; }
+    header .sub { opacity: 0.85; font-size: 0.85rem; }
+    main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
+    .login-card, .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; color: var(--muted); }
+    input, textarea, select, button {
+      font: inherit;
+    }
+    input[type="password"], input[type="text"], textarea, select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-weight: 600;
+      background: var(--primary);
+      color: #fff;
+    }
+    button.secondary { background: #e8f5ef; color: var(--primary); }
+    button.danger { background: var(--danger); }
+    button.amber { background: var(--amber); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .stat {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+      text-align: center;
+    }
+    .stat b { display: block; font-size: 1.6rem; color: var(--primary); }
+    .stat span { font-size: 0.8rem; color: var(--muted); }
+    tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .tab {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--line);
+    }
+    .tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .item {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .item h3 { margin: 0 0 6px; font-size: 1rem; }
+    .meta { font-size: 0.85rem; color: var(--muted); margin-bottom: 8px; }
+    .err { color: var(--danger); font-size: 0.9rem; margin-top: 8px; }
+    .ok { color: var(--primary2); font-size: 0.9rem; }
+    .hidden { display: none !important; }
+    textarea { min-height: 64px; resize: vertical; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>whoseNearby Admin · standalone</h1>
+      <div class="sub">Verifications · Disputes · Reports</div>
+    </div>
+    <div class="row" id="headerActions" class="hidden">
+      <button type="button" class="secondary" id="btnRefresh">Refresh</button>
+      <button type="button" class="secondary" id="btnLogout">Log out</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="loginView" class="login-card">
+      <h2 style="margin-top:0">Sign in</h2>
+      <p class="meta">Separate from the mobile app. Use the same <code>ADMIN_API_KEY</code> as in <code>backend/.env</code>. API must be running.</p>
+      <label>Admin API key</label>
+      <input type="password" id="adminKey" placeholder="ADMIN_API_KEY" autocomplete="off" />
+      <label>API base URL</label>
+      <input type="text" id="apiBase" placeholder="http://127.0.0.1:4000" />
+      <button type="button" id="btnLogin">Enter dashboard</button>
+      <div id="loginErr" class="err hidden"></div>
+    </div>
+
+    <div id="dashView" class="hidden">
+      <div class="stats" id="stats"></div>
+      <div class="row" style="margin-bottom:12px">
+        <button type="button" class="tab active" data-tab="verifications">Verifications</button>
+        <button type="button" class="tab" data-tab="disputes">Disputes</button>
+        <button type="button" class="tab" data-tab="reports">Reports</button>
+      </div>
+      <div id="panel-verifications"></div>
+      <div id="panel-disputes" class="hidden"></div>
+      <div id="panel-reports" class="hidden"></div>
+    </div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const state = {
+      key: localStorage.getItem('wn_admin_key') || '',
+      base: localStorage.getItem('wn_admin_base') || (location.origin.includes('8081') ? 'http://127.0.0.1:4000' : location.origin),
+    };
+
+    $('apiBase').value = state.base;
+    if (state.key) $('adminKey').value = state.key;
+
+    async function api(path, opts = {}) {
+      const base = state.base.replace(/\/$/, '');
+      const res = await fetch(base + path, {
+        ...opts,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-key': state.key,
+          ...(opts.headers || {}),
+        },
+      });
+      const text = await res.text();
+      let data;
+      try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text }; }
+      if (!res.ok) throw new Error(data.error || res.statusText || 'Request failed');
+      return data;
+    }
+
+    function showLogin(err) {
+      $('loginView').classList.remove('hidden');
+      $('dashView').classList.add('hidden');
+      $('headerActions').classList.add('hidden');
+      if (err) {
+        $('loginErr').textContent = err;
+        $('loginErr').classList.remove('hidden');
+      }
+    }
+
+    function showDash() {
+      $('loginView').classList.add('hidden');
+      $('dashView').classList.remove('hidden');
+      $('headerActions').classList.remove('hidden');
+    }
+
+    async function loadAll() {
+      const stats = await api('/admin/stats');
+      $('stats').innerHTML = [
+        ['Users', stats.users],
+        ['Artisans', stats.artisans],
+        ['Jobs', stats.jobs],
+        ['Open disputes', stats.openDisputes],
+        ['Open reports', stats.openReports],
+      ].map(([l, v]) => `<div class="stat"><b>${v ?? 0}</b><span>${l}</span></div>`).join('');
+
+      const ver = await api('/admin/verifications');
+      const pending = ver.pending || [];
+      $('panel-verifications').innerHTML = pending.length
+        ? pending.map((p) => {
+            const u = p.user || {};
+            return `<div class="item" data-id="${p.id}">
+              <h3>${esc(p.businessName)} · ${esc(p.primarySkill)}</h3>
+              <div class="meta">${esc(u.fullName || '')} · ${esc(u.phone || u.email || '')} · ${esc(u.city || '')}</div>
+              <div class="meta">Docs: ${p.idDocUrl ? esc(p.idDocUrl) : '—'} ${p.selfieUrl ? ' · selfie: ' + esc(p.selfieUrl) : ''}</div>
+              <div class="row">
+                <button type="button" onclick="resolveVer('${p.id}','APPROVED')">Approve</button>
+                <button type="button" class="danger" onclick="resolveVer('${p.id}','REJECTED')">Reject</button>
+              </div>
+            </div>`;
+          }).join('')
+        : '<div class="card meta">No pending verifications.</div>';
+
+      const dis = await api('/admin/disputes');
+      const disputes = dis.disputes || [];
+      $('panel-disputes').innerHTML = disputes.length
+        ? disputes.map((d) => {
+            const job = d.job || {};
+            const opener = d.openedBy || {};
+            return `<div class="item">
+              <h3>${esc(job.title || 'Job')} · ₦${job.agreedAmount ?? '—'}</h3>
+              <div class="meta">Opened by ${esc(opener.fullName || d.openedById)} · ${esc(d.reason || '')}</div>
+              <div class="meta">Job id: ${esc(d.jobId)} · Status: ${esc(job.status || '')}</div>
+              <label>Resolution note</label>
+              <textarea id="res-${d.id}" placeholder="Explain the decision…"></textarea>
+              <div class="row">
+                <button type="button" onclick="resolveDispute('${d.id}','RESOLVED_CLIENT')">Refund client</button>
+                <button type="button" class="amber" onclick="resolveDispute('${d.id}','RESOLVED_ARTISAN')">Pay artisan</button>
+                <button type="button" class="secondary" onclick="resolveDispute('${d.id}','CLOSED')">Close only</button>
+              </div>
+            </div>`;
+          }).join('')
+        : '<div class="card meta">No open disputes.</div>';
+
+      const rep = await api('/admin/reports');
+      const reports = rep.reports || [];
+      $('panel-reports').innerHTML = reports.length
+        ? reports.map((r) => {
+            const reporter = r.reporter || {};
+            return `<div class="item">
+              <h3>Report · ${esc(r.reason)}</h3>
+              <div class="meta">From ${esc(reporter.fullName || r.reporterId)} → target ${esc(r.targetId)}</div>
+              <div class="row">
+                <button type="button" onclick="resolveReport('${r.id}','REVIEWED')">Mark reviewed</button>
+                <button type="button" class="secondary" onclick="resolveReport('${r.id}','DISMISSED')">Dismiss</button>
+              </div>
+            </div>`;
+          }).join('')
+        : '<div class="card meta">No open reports.</div>';
+    }
+
+    function esc(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    window.resolveVer = async (id, status) => {
+      const note = status === 'REJECTED' ? prompt('Optional note for artisan:') || '' : '';
+      try {
+        await api('/admin/verifications/' + id, {
+          method: 'POST',
+          body: JSON.stringify({ status, note }),
+        });
+        await loadAll();
+      } catch (e) {
+        alert(e.message);
+      }
+    };
+
+    window.resolveDispute = async (id, outcome) => {
+      const resolution = ($('res-' + id)?.value || '').trim();
+      if (resolution.length < 3) {
+        alert('Write a short resolution note');
+        return;
+      }
+      try {
+        await api('/admin/disputes/' + id + '/resolve', {
+          method: 'POST',
+          body: JSON.stringify({ outcome, resolution }),
+        });
+        await loadAll();
+      } catch (e) {
+        alert(e.message);
+      }
+    };
+
+    window.resolveReport = async (id, status) => {
+      try {
+        await api('/admin/reports/' + id, {
+          method: 'POST',
+          body: JSON.stringify({ status }),
+        });
+        await loadAll();
+      } catch (e) {
+        alert(e.message);
+      }
+    };
+
+    $('btnLogin').onclick = async () => {
+      state.key = $('adminKey').value.trim();
+      state.base = $('apiBase').value.trim() || 'http://127.0.0.1:4000';
+      $('loginErr').classList.add('hidden');
+      try {
+        await api('/admin/stats');
+        localStorage.setItem('wn_admin_key', state.key);
+        localStorage.setItem('wn_admin_base', state.base);
+        showDash();
+        await loadAll();
+      } catch (e) {
+        showLogin(e.message || 'Login failed');
+      }
+    };
+
+    $('btnLogout').onclick = () => {
+      localStorage.removeItem('wn_admin_key');
+      state.key = '';
+      showLogin();
+    };
+
+    $('btnRefresh').onclick = () => loadAll().catch((e) => alert(e.message));
+
+    document.querySelectorAll('.tab').forEach((btn) => {
+      btn.onclick = () => {
+        document.querySelectorAll('.tab').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const tab = btn.getAttribute('data-tab');
+        ['verifications', 'disputes', 'reports'].forEach((t) => {
+          $('panel-' + t).classList.toggle('hidden', t !== tab);
+        });
+      };
+    });
+
+    // Auto-login if key stored
+    if (state.key) {
+      api('/admin/stats')
+        .then(() => {
+          showDash();
+          return loadAll();
+        })
+        .catch(() => showLogin());
+    }
+  </script>
+</body>
+</html>
