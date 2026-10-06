@@ -24,13 +24,13 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       })
       .parse(req.body);
 
-    const job = await prisma.job.create({
-      data: {
-        ...data,
-        clientId: req.userId!,
-        status: data.artisanId ? 'NEGOTIATING' : 'OPEN',
-      },
-    });
+const job = await prisma.job.create({
+  data: {
+    ...data,
+    clientId: req.userId!,
+    status: data.artisanId ? 'NEGOTIATING' : 'OPEN',
+  } as any,
+});
 
     // Notify artisans who offer this skill (available + approved)
     if (!data.artisanId) {

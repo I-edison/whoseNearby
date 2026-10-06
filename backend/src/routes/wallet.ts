@@ -269,11 +269,11 @@ router.put('/bank', requireAuth, async (req: AuthRequest, res, next) => {
         bankCode: z.string().optional(),
       })
       .parse(req.body);
-    const bank = await prisma.bankAccount.upsert({
-      where: { userId: req.userId! },
-      create: { userId: req.userId!, ...data },
-      update: data,
-    });
+   const bank = await prisma.bankAccount.upsert({
+  where: { userId: req.userId! },
+  create: { userId: req.userId!, ...data } as any,
+  update: data,
+});
     res.json({ bank });
   } catch (e) {
     next(e);
