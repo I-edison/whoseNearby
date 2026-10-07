@@ -21,6 +21,28 @@ function normalizeTarget(raw: string): string {
   return digits.startsWith('+') ? digits : digits.replace(/^\+/, '');
 }
 
+/** True when we have a real email/SMS delivery path (not just console). */
+function isLiveDelivery(target: string): boolean {
+  const isEmail = target.includes('@');
+  if (isEmail) {
+    return !!(
+      process.env.RESEND_API_KEY ||
+      (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
+    );
+  }
+  const provider = (process.env.OTP_PROVIDER || 'console').toLowerCase();
+  return (
+    (provider === 'twilio' &&
+      !!process.env.TWILIO_ACCOUNT_SID &&
+      !!process.env.TWILIO_AUTH_TOKEN &&
+      !!process.env.TWILIO_FROM_NUMBER) ||
+    (provider === 'termii' && !!process.env.TERMII_API_KEY) ||
+    (provider === 'africastalking' &&
+      !!process.env.AT_API_KEY &&
+      !!process.env.AT_USERNAME)
+  );
+}
+
 const registerSchema = z.object({
   fullName: z.string().min(2),
   email: z.string().email().optional(),
@@ -89,29 +111,19 @@ router.post('/register', async (req, res, next) => {
       },
     });
 
-    // Issue OTP for this target (same logic as /otp/request)
+    // Issue OTP for this target
     await prisma.otpCode.updateMany({
       where: { target, used: false },
       data: { used: true },
     });
 
-    const provider = (process.env.OTP_PROVIDER || 'console').toLowerCase();
-    const liveSms =
-      (provider === 'twilio' &&
-        !!process.env.TWILIO_ACCOUNT_SID &&
-        !!process.env.TWILIO_AUTH_TOKEN &&
-        !!process.env.TWILIO_FROM_NUMBER) ||
-      (provider === 'termii' && !!process.env.TERMII_API_KEY) ||
-      (provider === 'africastalking' &&
-        !!process.env.AT_API_KEY &&
-        !!process.env.AT_USERNAME);
-
+    const live = isLiveDelivery(target);
     const forceDemo = process.env.OTP_FORCE_DEMO === 'true';
     const demoRaw = (process.env.OTP_DEMO_CODE || '').trim();
     const useDemo =
       forceDemo ||
-      (!liveSms && demoRaw && /^\d{6}$/.test(demoRaw)) ||
-      (!liveSms && !demoRaw && process.env.NODE_ENV !== 'production');
+      (!live && demoRaw && /^\d{6}$/.test(demoRaw)) ||
+      (!live && !demoRaw && process.env.NODE_ENV !== 'production');
 
     const code = useDemo
       ? demoRaw && /^\d{6}$/.test(demoRaw)
@@ -121,13 +133,13 @@ router.post('/register', async (req, res, next) => {
 
     await prisma.otpCode.create({ data: { target, code, expiresAt } });
     console.log(
-      `[OTP] signup provider=${provider} live=${liveSms} target=${target} code=${liveSms ? '(hidden)' : code}`
+      `[OTP] signup live=${live} target=${target} code=${live ? '(hidden)' : code}`
     );
     try {
       await sendOtpSms(target, code);
     } catch (err) {
       console.error('OTP delivery failed:', err);
-      if (liveSms || process.env.NODE_ENV === 'production') {
+      if (live || process.env.NODE_ENV === 'production') {
         return res.status(502).json({
           error:
             err instanceof Error
@@ -138,14 +150,17 @@ router.post('/register', async (req, res, next) => {
     }
 
     const expose =
-      !liveSms &&
+      !live &&
       process.env.OTP_EXPOSE_CODE !== 'false' &&
       process.env.NODE_ENV !== 'production';
+
+    const channel = target.includes('@') ? 'email' : 'sms';
 
     res.status(200).json({
       needsOtp: true,
       target,
-      message: 'Verify the code to finish creating your account',
+      channel,
+      message: `Verify the code sent to your ${channel} to finish creating your account`,
       expiresInSeconds: ttlMinutes * 60,
       ...(expose ? { code } : {}),
     });
@@ -183,6 +198,7 @@ router.post('/login', async (req, res, next) => {
         city: user.city,
         area: user.area,
         avatarLetter: user.avatarLetter,
+        emailVerified: user.emailVerified ?? false,
       },
       token,
     });
@@ -190,8 +206,6 @@ router.post('/login', async (req, res, next) => {
     next(e);
   }
 });
-
-
 
 // OTP — valid for a few minutes
 router.post('/otp/request', async (req, res, next) => {
@@ -202,30 +216,18 @@ router.post('/otp/request', async (req, res, next) => {
       return res.status(400).json({ error: 'Invalid phone or email' });
     }
 
-    // Invalidate previous unused codes for this target
     await prisma.otpCode.updateMany({
       where: { target, used: false },
       data: { used: true },
     });
 
-    // Live SMS providers: always random 6-digit code (ignore OTP_DEMO_CODE unless forced).
-    const provider = (process.env.OTP_PROVIDER || 'console').toLowerCase();
-    const liveSms =
-      (provider === 'twilio' &&
-        !!process.env.TWILIO_ACCOUNT_SID &&
-        !!process.env.TWILIO_AUTH_TOKEN &&
-        !!process.env.TWILIO_FROM_NUMBER) ||
-      (provider === 'termii' && !!process.env.TERMII_API_KEY) ||
-      (provider === 'africastalking' &&
-        !!process.env.AT_API_KEY &&
-        !!process.env.AT_USERNAME);
-
+    const live = isLiveDelivery(target);
     const forceDemo = process.env.OTP_FORCE_DEMO === 'true';
     const demoRaw = (process.env.OTP_DEMO_CODE || '').trim();
     const useDemo =
       forceDemo ||
-      (!liveSms && demoRaw && /^\d{6}$/.test(demoRaw)) ||
-      (!liveSms && !demoRaw && process.env.NODE_ENV !== 'production');
+      (!live && demoRaw && /^\d{6}$/.test(demoRaw)) ||
+      (!live && !demoRaw && process.env.NODE_ENV !== 'production');
 
     const code = useDemo
       ? demoRaw && /^\d{6}$/.test(demoRaw)
@@ -239,13 +241,13 @@ router.post('/otp/request', async (req, res, next) => {
     await prisma.otpCode.create({ data: { target, code, expiresAt } });
 
     console.log(
-      `[OTP] provider=${provider} live=${liveSms} target=${target} code=${liveSms ? '(hidden)' : code}`
+      `[OTP] live=${live} target=${target} code=${live ? '(hidden)' : code}`
     );
     try {
       await sendOtpSms(target, code);
     } catch (err) {
       console.error('OTP delivery failed:', err);
-      if (liveSms || process.env.NODE_ENV === 'production') {
+      if (live || process.env.NODE_ENV === 'production') {
         return res.status(502).json({
           error:
             err instanceof Error
@@ -255,16 +257,19 @@ router.post('/otp/request', async (req, res, next) => {
       }
     }
 
-    // Never expose codes when live SMS is on
     const expose =
-      !liveSms &&
+      !live &&
       process.env.OTP_EXPOSE_CODE !== 'false' &&
       process.env.NODE_ENV !== 'production';
 
+    const channel = target.includes('@') ? 'email' : 'sms';
+
     res.json({
-      message: liveSms ? 'OTP sent by SMS' : 'OTP sent',
+      message: live
+        ? `OTP sent by ${channel}`
+        : 'OTP sent',
+      channel,
       expiresInSeconds: ttlMinutes * 60,
-      provider,
       ...(expose ? { code } : {}),
     });
   } catch (e) {
@@ -341,6 +346,8 @@ router.post('/otp/verify', async (req, res, next) => {
           latitude: pending.latitude,
           longitude: pending.longitude,
           avatarLetter,
+          // Email is verified only when the OTP target was the email itself
+          emailVerified: !!pending.email && target === pending.email,
           wallet: { create: { balance: 0 } },
         },
         select: {
@@ -352,11 +359,24 @@ router.post('/otp/verify', async (req, res, next) => {
           city: true,
           area: true,
           avatarLetter: true,
+          emailVerified: true,
         },
       });
       await prisma.pendingSignup.delete({ where: { id: pending.id } });
       const token = signToken({ userId: user.id, role: user.role });
       return res.json({ verified: true, created: true, user, token });
+    }
+
+    // Existing user verifying email (target is their email)
+    if (target.includes('@')) {
+      const user = await prisma.user.findFirst({ where: { email: target } });
+      if (user && !user.emailVerified) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { emailVerified: true },
+        });
+        return res.json({ verified: true, emailVerified: true });
+      }
     }
 
     res.json({ verified: true });
@@ -382,6 +402,7 @@ router.get('/me', requireAuth, async (req: AuthRequest, res, next) => {
         avatarLetter: true,
         avatarUrl: true,
         coverUrl: true,
+        emailVerified: true,
         artisanProfile: true,
         wallet: { select: { id: true, balance: true, pinHash: true } },
       },
@@ -432,6 +453,7 @@ router.patch('/me', requireAuth, async (req: AuthRequest, res, next) => {
         avatarLetter: true,
         avatarUrl: true,
         coverUrl: true,
+        emailVerified: true,
       },
     });
     res.json(user);

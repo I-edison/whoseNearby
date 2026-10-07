@@ -24,13 +24,13 @@ router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       })
       .parse(req.body);
 
-const job = await prisma.job.create({
-  data: {
-    ...data,
-    clientId: req.userId!,
-    status: data.artisanId ? 'NEGOTIATING' : 'OPEN',
-  } as any,
-});
+    const job = await prisma.job.create({
+      data: {
+        ...data,
+        clientId: req.userId!,
+        status: data.artisanId ? 'NEGOTIATING' : 'OPEN',
+      } as any,
+    });
 
     // Notify artisans who offer this skill (available + approved)
     if (!data.artisanId) {
@@ -66,7 +66,6 @@ const job = await prisma.job.create({
     next(e);
   }
 });
-
 
 // Open jobs board (artisans browse work matching their skill)
 router.get('/open', requireAuth, async (req: AuthRequest, res, next) => {
@@ -334,15 +333,23 @@ router.post('/:id/complete', requireAuth, async (req: AuthRequest, res, next) =>
     }
 
     const amount = job.agreedAmount;
+
+    // Client wallet — for history entry when job is done
+    const clientWallet = await prisma.wallet.findUnique({
+      where: { userId: job.clientId },
+    });
+
     await prisma.$transaction([
       prisma.job.update({
         where: { id: job.id },
         data: { status: 'COMPLETED', completedAt: new Date() },
       }),
+      // Credit artisan
       prisma.wallet.update({
         where: { id: artisanWallet.id },
         data: { balance: { increment: amount } },
       }),
+      // Artisan history
       prisma.transaction.create({
         data: {
           walletId: artisanWallet.id,
@@ -353,6 +360,21 @@ router.post('/:id/complete', requireAuth, async (req: AuthRequest, res, next) =>
           description: `Payment received — ${job.title}`,
         },
       }),
+      // Client history (so wallet shows the job is done)
+      ...(clientWallet
+        ? [
+            prisma.transaction.create({
+              data: {
+                walletId: clientWallet.id,
+                jobId: job.id,
+                type: 'ESCROW_RELEASE',
+                amount,
+                status: 'COMPLETED',
+                description: `Payment released — ${job.title}`,
+              },
+            }),
+          ]
+        : []),
       prisma.artisanProfile.update({
         where: { id: job.artisanId },
         data: { jobsDone: { increment: 1 } },
@@ -363,15 +385,15 @@ router.post('/:id/complete', requireAuth, async (req: AuthRequest, res, next) =>
       userId: job.artisan.userId,
       type: 'payment',
       title: 'Payment released',
-      body: `NGN ${amount} for "${job.title}" is in your wallet.`,
-      data: { jobId: job.id },
+      body: `₦${amount.toLocaleString()} for "${job.title}" is in your wallet.`,
+      data: { jobId: job.id, amount },
     });
     await notifyUser({
       userId: job.clientId,
       type: 'job',
       title: 'Job complete',
       body: `You confirmed "${job.title}". Payment was released to the artisan.`,
-      data: { jobId: job.id },
+      data: { jobId: job.id, amount },
     });
 
     const updatedArtisanWallet = await prisma.wallet.findUnique({

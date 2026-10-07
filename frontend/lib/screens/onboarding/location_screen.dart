@@ -57,7 +57,7 @@ class _LocationScreenState extends State<LocationScreen> {
       if (!mounted) return;
       setState(() {
         _error =
-            'Live location timed out or is unavailable. Pick Ikeja / Lekki / etc. below.';
+            'Live location timed out or is unavailable. Pick an area in Benin / Edo below.';
         _loadingGps = false;
       });
     }
@@ -240,7 +240,7 @@ class _LocationScreenState extends State<LocationScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Tip: tap any area (e.g. Ikeja), then Continue.',
+                'Tip: tap any area (e.g. Ugbowo or GRA), then Continue. You can change it later in Settings.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 12,

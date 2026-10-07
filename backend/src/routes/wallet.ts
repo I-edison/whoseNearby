@@ -4,6 +4,7 @@ import { prisma } from '../utils/prisma';
 import { hashPassword, verifyPassword } from '../utils/auth';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { initializeDeposit, verifyTransaction, paystackConfigured } from '../services/paystack';
+import { notifyUser } from '../utils/notify';
 
 const router = Router();
 
@@ -189,6 +190,15 @@ router.post('/fund', requireAuth, async (req: AuthRequest, res, next) => {
       }),
     ]);
 
+    // Notify user that wallet was funded
+    await notifyUser({
+      userId: req.userId!,
+      type: 'WALLET_FUND',
+      title: 'Wallet funded',
+      body: `₦${amount.toLocaleString()} has been added to your wallet.`,
+      data: { amount, balance: updated.balance },
+    });
+
     res.json({ balance: updated.balance });
   } catch (e) {
     next(e);
@@ -247,7 +257,6 @@ router.post('/withdraw', requireAuth, async (req: AuthRequest, res, next) => {
   }
 });
 
-
 /** GET /wallet/bank */
 router.get('/bank', requireAuth, async (req: AuthRequest, res, next) => {
   try {
@@ -269,11 +278,11 @@ router.put('/bank', requireAuth, async (req: AuthRequest, res, next) => {
         bankCode: z.string().optional(),
       })
       .parse(req.body);
-   const bank = await prisma.bankAccount.upsert({
-  where: { userId: req.userId! },
-  create: { userId: req.userId!, ...data } as any,
-  update: data,
-});
+    const bank = await prisma.bankAccount.upsert({
+      where: { userId: req.userId! },
+      create: { userId: req.userId!, ...data } as any,
+      update: data,
+    });
     res.json({ bank });
   } catch (e) {
     next(e);
@@ -363,6 +372,16 @@ router.post('/paystack/verify', requireAuth, async (req: AuthRequest, res, next)
       });
     }
     const w = await prisma.wallet.findUnique({ where: { id: wallet.id } });
+
+    // Notify user that wallet was funded
+    await notifyUser({
+      userId: req.userId!,
+      type: 'WALLET_FUND',
+      title: 'Wallet funded',
+      body: `₦${amount.toLocaleString()} has been added to your wallet.`,
+      data: { amount, reference, balance: w?.balance ?? updated.balance },
+    });
+
     res.json({ balance: w?.balance ?? updated.balance, amount });
   } catch (e) {
     next(e);
@@ -392,14 +411,21 @@ router.post('/paystack/demo-complete', requireAuth, async (req: AuthRequest, res
         data: { status: 'COMPLETED', description: 'Wallet top-up (demo)' },
       }),
     ]);
+
+    // Notify user that wallet was funded
+    await notifyUser({
+      userId: req.userId!,
+      type: 'WALLET_FUND',
+      title: 'Wallet funded',
+      body: `₦${pending.amount.toLocaleString()} has been added to your wallet.`,
+      data: { amount: pending.amount, balance: updated.balance },
+    });
+
     res.json({ balance: updated.balance, amount: pending.amount });
   } catch (e) {
     next(e);
   }
 });
-
-
-
 
 /** POST /wallet/paystack/webhook — set this URL in Paystack dashboard */
 router.post('/paystack/webhook', async (req, res) => {
@@ -458,12 +484,21 @@ router.post('/paystack/webhook', async (req, res) => {
         },
       });
     }
+
+    // Notify user that wallet was funded via webhook
+    await notifyUser({
+      userId,
+      type: 'WALLET_FUND',
+      title: 'Wallet funded',
+      body: `₦${amount.toLocaleString()} has been added to your wallet.`,
+      data: { amount, reference: ref },
+    });
+
     res.sendStatus(200);
   } catch (e) {
     console.error('paystack webhook', e);
     res.sendStatus(500);
   }
 });
-
 
 export default router;
