@@ -141,6 +141,49 @@ router.post('/:jobId/messages', requireAuth, async (req: AuthRequest, res, next)
     const job = await prisma.job.findUnique({ where: { id: req.params.jobId } });
     if (!job) return res.status(404).json({ error: 'Job not found' });
 
+    // Block duplicate price offers while one is still unanswered
+    if (offerAmount != null) {
+      if (job.status === 'IN_PROGRESS' || job.status === 'COMPLETED' || job.status === 'FUNDED') {
+        return res.status(400).json({
+          error: 'Job is already funded. Price can no longer be changed.',
+        });
+      }
+
+      const lastOffer = await prisma.message.findFirst({
+        where: {
+          jobId: job.id,
+          offerAmount: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (lastOffer) {
+        // Has the other party replied after that offer?
+        const replyAfterOffer = await prisma.message.findFirst({
+          where: {
+            jobId: job.id,
+            senderId: { not: lastOffer.senderId },
+            createdAt: { gt: lastOffer.createdAt },
+          },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        if (!replyAfterOffer) {
+          const isOwnPending = lastOffer.senderId === req.userId;
+          return res.status(400).json({
+            error: isOwnPending
+              ? 'You already sent a price offer. Wait for a reply before sending another.'
+              : 'There is already a price offer waiting for a reply. Answer it first (or wait for them to respond).',
+            pendingOffer: {
+              amount: lastOffer.offerAmount,
+              fromYou: isOwnPending,
+              messageId: lastOffer.id,
+            },
+          });
+        }
+      }
+    }
+
     const message = await prisma.message.create({
       data: {
         jobId: job.id,
@@ -174,8 +217,11 @@ router.post('/:jobId/messages', requireAuth, async (req: AuthRequest, res, next)
         await notifyUser({
           userId: peerId,
           type: 'chat',
-          title: 'New message',
-          body: body.slice(0, 120),
+          title: offerAmount != null ? 'New price offer' : 'New message',
+          body:
+            offerAmount != null
+              ? `Offer: ₦${offerAmount.toLocaleString()} — ${body.slice(0, 80)}`
+              : body.slice(0, 120),
           data: { jobId: job.id },
         });
       }
