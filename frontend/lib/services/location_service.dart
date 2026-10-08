@@ -40,7 +40,6 @@ class AppLocation {
 
   bool get labelLooksLikeCoordinates {
     final l = label.trim();
-    // e.g. "6.5244, 3.3792"
     return RegExp(r'^-?\d+\.\d+\s*,\s*-?\d+\.\d+$').hasMatch(l);
   }
 }
@@ -121,34 +120,27 @@ class LocationService {
     final ok = await ensurePermission();
     if (!ok) return null;
 
-    // medium is more reliable on web / weak GPS; retry once with high if needed
     Position pos;
     try {
       pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 20),
-        ),
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 20),
       );
     } catch (_) {
       pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.low,
-          timeLimit: Duration(seconds: 25),
-        ),
+        desiredAccuracy: LocationAccuracy.low,
+        timeLimit: const Duration(seconds: 25),
       );
     }
 
     return resolvePlaceName(pos.latitude, pos.longitude);
   }
 
-  /// Build a human-readable place from coordinates.
   Future<AppLocation> resolvePlaceName(double lat, double lng) async {
     String? city;
     String? area;
     String? label;
 
-    // 1) Platform geocoding (works on mobile; often limited on web)
     try {
       final places = await placemarkFromCoordinates(lat, lng);
       if (places.isNotEmpty) {
@@ -161,7 +153,6 @@ class LocationService {
       if (kDebugMode) debugPrint('placemarkFromCoordinates failed: $e');
     }
 
-    // 2) OpenStreetMap Nominatim (works on web + when device geocoder fails)
     if (label == null || label.isEmpty) {
       try {
         final nom = await _nominatimReverse(lat, lng);
@@ -175,7 +166,6 @@ class LocationService {
       }
     }
 
-    // 3) Snap to nearest popular area if within ~8km
     final nearest = _nearestPopular(lat, lng, maxKm: 8);
     if (nearest != null && (label == null || label.isEmpty)) {
       return AppLocation(
@@ -187,7 +177,6 @@ class LocationService {
       );
     }
 
-    // Prefer popular name if geocode only gave a vague region
     if (nearest != null &&
         (label == null ||
             label.length < 3 ||
@@ -210,7 +199,6 @@ class LocationService {
     );
   }
 
-  /// (city, area, label)
   (String?, String?, String?) _fromPlacemark(Placemark p) {
     final areaCandidates = [
       p.subLocality,
@@ -238,7 +226,6 @@ class LocationService {
 
     final area = pick(areaCandidates);
     var city = pick(cityCandidates);
-    // Avoid "Ikeja, Ikeja"
     if (city != null && area != null && city.toLowerCase() == area.toLowerCase()) {
       city = pick(cityCandidates.skip(1).toList()) ?? p.administrativeArea;
     }
@@ -251,7 +238,6 @@ class LocationService {
     return (city, area, label);
   }
 
-  /// (city, area, label) via Nominatim
   Future<(String?, String?, String?)?> _nominatimReverse(
       double lat, double lng) async {
     final uri = Uri.parse(
@@ -261,7 +247,6 @@ class LocationService {
     final res = await http.get(
       uri,
       headers: {
-        // Nominatim requires a valid User-Agent
         'User-Agent': 'WhoseNearby/1.0 (local-dev)',
         'Accept-Language': 'en',
       },
@@ -373,7 +358,6 @@ class LocationService {
   }
 
   Future<void> apply(AppLocation loc) async {
-    // Prefer keeping a good label (popular areas) — don't block on geocode.
     var finalLoc = loc;
     if (loc.labelLooksLikeCoordinates) {
       try {
@@ -382,7 +366,6 @@ class LocationService {
       } catch (_) {}
     }
     await saveLocal(finalLoc);
-    // Server update: best-effort, short timeout handled by caller too
     try {
       await saveToServer(finalLoc).timeout(const Duration(seconds: 5));
     } catch (_) {}
@@ -391,7 +374,6 @@ class LocationService {
   Future<AppLocation> resolve() async {
     final saved = await loadLocal();
     if (saved != null) {
-      // Upgrade old saves that only stored coordinates
       if (saved.labelLooksLikeCoordinates) {
         try {
           final named =

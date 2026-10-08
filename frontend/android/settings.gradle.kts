@@ -1,4 +1,4 @@
-pluginManagement {
+﻿pluginManagement {
     val flutterSdkPath =
         run {
             val properties = java.util.Properties()
@@ -19,9 +19,8 @@ pluginManagement {
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    // Flutter requires >= 8.11.1; stay on 8.11.x (avoid AGP 9 new DSL break)
     id("com.android.application") version "8.11.1" apply false
-    id("org.jetbrains.kotlin.android") version "2.2.0" apply false
+    id("org.jetbrains.kotlin.android") version "2.2.20" apply false
 }
 
 include(":app")

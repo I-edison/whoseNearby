@@ -108,7 +108,7 @@ class _LocationScreenState extends State<LocationScreen> {
             children: [
               const Align(
                 alignment: Alignment.centerLeft,
-                child: const AppBackButton(
+                child: AppBackButton(
                   fallbackRoute: '/role',
                 ),
               ),
