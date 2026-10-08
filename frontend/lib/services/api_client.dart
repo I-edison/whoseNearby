@@ -47,7 +47,7 @@ class ApiClient {
     try {
       final res = await _client
           .get(_uri(path, query), headers: await _headers(auth: auth))
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 60));
       return _handle(res);
     } on ApiException {
       rethrow;

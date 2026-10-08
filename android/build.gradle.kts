@@ -20,26 +20,6 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-subprojects {
-    afterEvaluate {
-        if (project.plugins.hasPlugin("com.android.application") ||
-            project.plugins.hasPlugin("com.android.library")
-        ) {
-            extensions.findByName("android")?.let { ext ->
-                try {
-                    val m = ext.javaClass.getMethod("setCompileSdk", Int::class.javaPrimitiveType)
-                    m.invoke(ext, 36)
-                } catch (_: Exception) {
-                    try {
-                        val m2 = ext.javaClass.getMethod("setCompileSdkVersion", Int::class.javaPrimitiveType)
-                        m2.invoke(ext, 36)
-                    } catch (_: Exception) {}
-                }
-            }
-        }
-    }
-}
-
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
