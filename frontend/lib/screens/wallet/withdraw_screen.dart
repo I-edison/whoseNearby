@@ -21,7 +21,14 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
   bool _loading = true;
   bool _submitting = false;
   String? _error;
+  double? _selectedQuick;
+
   final _fmt = NumberFormat.currency(symbol: '₦', decimalDigits: 0);
+
+  List<double> get _quickAmounts {
+    final caps = <double>[500, 1000, 2000, 5000, 10000];
+    return caps.where((a) => a <= _balance).toList();
+  }
 
   @override
   void initState() {
@@ -51,11 +58,36 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
     }
   }
 
+  void _pickAmount(double a) {
+    setState(() {
+      _selectedQuick = a;
+      _amountCtrl.text = a.toStringAsFixed(0);
+      _error = null;
+    });
+  }
+
+  void _pickMax() {
+    if (_balance < 100) return;
+    final max = _balance.floorToDouble();
+    setState(() {
+      _selectedQuick = null;
+      _amountCtrl.text = max.toStringAsFixed(0);
+      _error = null;
+    });
+  }
+
   Future<void> _submit() async {
-    final amount = double.tryParse(_amountCtrl.text.replaceAll(RegExp(r'[^0-9.]'), ''));
+    final amount = double.tryParse(
+      _amountCtrl.text.replaceAll(RegExp(r'[^0-9.]'), ''),
+    );
     final pin = _pinCtrl.text.trim();
+
     if (amount == null || amount < 100) {
       setState(() => _error = 'Enter at least ₦100');
+      return;
+    }
+    if (amount > _balance) {
+      setState(() => _error = 'Amount is more than your balance');
       return;
     }
     if (pin.length != 4) {
@@ -66,18 +98,21 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
       setState(() => _error = 'Add a bank account first');
       return;
     }
+
     setState(() {
       _submitting = true;
       _error = null;
     });
+
     try {
       await PaymentService.instance.withdraw(amount: amount, pin: pin);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Withdrawal requested to ${_bank!['bankName']} · ${_bank!['accountNumber']}',
+            '₦${amount.toStringAsFixed(0)} sent to ${_bank!['bankName']} · ${_bank!['accountNumber']}',
           ),
+          backgroundColor: AppColors.primary700,
         ),
       );
       Navigator.pop(context, true);
@@ -103,52 +138,184 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
               children: [
+                // Balance
                 AppCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SoftText('Available to withdraw', size: 13),
+                      const SizedBox(height: 4),
                       Text(
                         _fmt.format(_balance),
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 26,
+                          fontSize: 28,
                           fontWeight: FontWeight.w800,
+                          color: AppColors.ink,
                         ),
                       ),
                       const SizedBox(height: 8),
                       const SoftText(
-                        'Money still on hold for active jobs cannot be withdrawn until the client confirms.',
+                        'Funds on hold for active jobs are not included.',
                         size: 12,
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
+
+                // Bank
                 if (_bank == null) ...[
-                  const SoftText('Add your bank account to receive money.', size: 14),
-                  const SizedBox(height: 8),
-                  PrimaryButton(
-                    label: 'Add bank account',
-                    onPressed: () => Navigator.pushNamed(context, '/bank').then((_) => _load()),
+                  AppCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Where should we send the money?',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const SoftText(
+                          'Add your bank account once — next withdrawals are one tap.',
+                          size: 13,
+                        ),
+                        const SizedBox(height: 12),
+                        PrimaryButton(
+                          label: 'Add bank account',
+                          onPressed: () => Navigator.pushNamed(context, '/bank')
+                              .then((_) => _load()),
+                        ),
+                      ],
+                    ),
                   ),
                 ] else ...[
-                  SoftText(
-                    'To: ${_bank!['accountName']} · ${_bank!['bankName']} · ${_bank!['accountNumber']}',
-                    size: 13,
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pushNamed(context, '/bank').then((_) => _load()),
-                    child: const Text('Change bank'),
+                  AppCard(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary050,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.account_balance_rounded,
+                            color: AppColors.primary700,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _bank!['accountName']?.toString() ?? 'Account',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${_bank!['bankName']} · ${_bank!['accountNumber']}',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  color: AppColors.inkSoft,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pushNamed(context, '/bank')
+                              .then((_) => _load()),
+                          child: const Text('Change'),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
-                const SizedBox(height: 12),
-                const FieldLabel('Amount (₦)'),
+
+                const SizedBox(height: 20),
+                Text(
+                  'Amount',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Quick amounts (Bolt-style)
+                if (_quickAmounts.isNotEmpty)
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      ..._quickAmounts.map((a) {
+                        final on = _selectedQuick == a;
+                        return GestureDetector(
+                          onTap: () => _pickAmount(a),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: on
+                                  ? AppColors.primary700
+                                  : AppColors.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: on
+                                    ? AppColors.primary700
+                                    : AppColors.line,
+                              ),
+                            ),
+                            child: Text(
+                              '₦${a.toStringAsFixed(0)}',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontWeight: FontWeight.w600,
+                                color: on ? Colors.white : AppColors.ink,
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                      GestureDetector(
+                        onTap: _pickMax,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.line),
+                          ),
+                          child: Text(
+                            'Max',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                const SizedBox(height: 14),
                 AppTextField(
                   controller: _amountCtrl,
-                  hint: 'e.g. 5000',
+                  hint: 'Or enter amount',
                   keyboardType: TextInputType.number,
                 ),
-                const SizedBox(height: 12),
+
+                const SizedBox(height: 16),
                 const FieldLabel('Wallet PIN'),
                 AppTextField(
                   controller: _pinCtrl,
@@ -156,13 +323,20 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                   keyboardType: TextInputType.number,
                   obscure: true,
                 ),
+
                 if (_error != null) ...[
                   const SizedBox(height: 12),
-                  Text(_error!, style: GoogleFonts.plusJakartaSans(color: AppColors.danger)),
+                  Text(
+                    _error!,
+                    style: GoogleFonts.plusJakartaSans(color: AppColors.danger),
+                  ),
                 ],
+
                 const SizedBox(height: 24),
                 PrimaryButton(
-                  label: 'Withdraw',
+                  label: _amountCtrl.text.trim().isEmpty
+                      ? 'Withdraw'
+                      : 'Withdraw ₦${_amountCtrl.text.trim()}',
                   loading: _submitting,
                   onPressed: _submitting || _bank == null ? null : _submit,
                 ),
