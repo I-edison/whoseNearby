@@ -53,7 +53,10 @@ class _HomeShellState extends State<HomeShell> {
           auth: true,
         ) as Map<String, dynamic>;
         final list = (conv['conversations'] as List?) ?? [];
-        chat = list.any((c) => ((c as Map)['unread'] as num?)?.toInt() ?? 0 > 0);
+        chat = list.any((c) {
+  final u = ((c as Map)['unread'] as num?)?.toInt() ?? 0;
+  return u > 0;
+});
       } catch (_) {}
 
       // Notifications unread → alerts + wallet-related
