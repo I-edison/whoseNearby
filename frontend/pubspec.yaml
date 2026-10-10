@@ -27,6 +27,10 @@ dev_dependencies:
   flutter_lints: ^3.0.0
   flutter_launcher_icons: ^0.14.4
 
+flutter_launcher_icons:
+  android: true
+  image_path: "assets/images/logo.png"
+
 flutter:
   uses-material-design: true
   assets:

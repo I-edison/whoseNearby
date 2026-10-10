@@ -800,18 +800,45 @@ class AppBottomNav extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        active ? (item.activeIcon ?? item.icon) : item.icon,
-                        size: 24,
-                        color: active ? AppColors.primary700 : AppColors.inkFaint,
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Icon(
+                            active ? (item.activeIcon ?? item.icon) : item.icon,
+                            size: 24,
+                            color: active
+                                ? AppColors.primary700
+                                : AppColors.inkFaint,
+                          ),
+                          if (item.showDot)
+                            Positioned(
+                              right: -2,
+                              top: -2,
+                              child: Container(
+                                width: 9,
+                                height: 9,
+                                decoration: BoxDecoration(
+                                  color: Colors.redAccent,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: AppColors.surface,
+                                    width: 1.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 4),
                       Text(
                         item.label,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 11,
-                          fontWeight: active ? FontWeight.w600 : FontWeight.w500,
-                          color: active ? AppColors.primary700 : AppColors.inkFaint,
+                          fontWeight:
+                              active ? FontWeight.w600 : FontWeight.w500,
+                          color: active
+                              ? AppColors.primary700
+                              : AppColors.inkFaint,
                         ),
                       ),
                     ],
@@ -830,7 +857,14 @@ class BottomNavItem {
   final IconData icon;
   final IconData? activeIcon;
   final String label;
-  const BottomNavItem(this.icon, this.label, {this.activeIcon});
+  final bool showDot;
+
+  const BottomNavItem(
+    this.icon,
+    this.label, {
+    this.activeIcon,
+    this.showDot = false,
+  });
 }
 
 // ─── Balance card ───────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import '../../widgets/app_widgets.dart';
 import '../../services/auth_service.dart';
 import '../../services/media_service.dart';
 import '../../services/api_client.dart';
+import '../../services/location_service.dart';
 import 'package:image_picker/image_picker.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -17,6 +18,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? _user;
+  AppLocation? _location;
   bool _loading = true;
   // Local demo portfolio slots (URLs or placeholders)
   List<String> _portfolio = [];
@@ -31,6 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _load() async {
     final user = await AuthService.instance.currentUser();
     final me = await AuthService.instance.me();
+    final location = await LocationService.instance.loadLocal();
     if (!mounted) return;
     final u = me ?? user;
     List<String> portfolio = [];
@@ -50,9 +53,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     setState(() {
       _user = u;
+      _location = location;
       _portfolio = portfolio;
       _loading = false;
     });
+  }
+
+  Future<void> _editLocation() async {
+    await Navigator.pushNamed(context, '/location',
+        arguments: {'mode': 'edit'});
+    if (!mounted) return;
+    final location = await LocationService.instance.loadLocal();
+    if (!mounted) return;
+    setState(() => _location = location);
   }
 
   void _snack(String msg) {
@@ -413,7 +426,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final contact = phone ?? email ?? '—';
     final area = _user?['area']?.toString();
     final city = _user?['city']?.toString();
-    final location = [area, city]
+    final localLocation = _location;
+    final location = localLocation != null &&
+        localLocation.label.isNotEmpty &&
+        !localLocation.labelLooksLikeCoordinates
+      ? localLocation.label
+      : [localLocation?.area ?? area, localLocation?.city ?? city]
         .where((e) => e != null && e.isNotEmpty)
         .join(', ');
     final role = _user?['role']?.toString() ?? 'CLIENT';
@@ -831,7 +849,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _MenuTile(
                       icon: Icons.location_on_outlined,
                       label: 'Update location',
-                      onTap: () => Navigator.pushNamed(context, '/location', arguments: {'mode': 'edit'}),
+                      onTap: _editLocation,
                     ),
                     _MenuTile(
                       icon: Icons.work_outline,

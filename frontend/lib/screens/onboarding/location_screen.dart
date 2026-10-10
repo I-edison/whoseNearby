@@ -27,6 +27,13 @@ class _LocationScreenState extends State<LocationScreen> {
       _hint =
           'On web, live GPS is limited. Pick a city/area below — that works for the pilot.';
     }
+    _restoreLocation();
+  }
+
+  Future<void> _restoreLocation() async {
+    final saved = await LocationService.instance.loadLocal();
+    if (!mounted || saved == null) return;
+    setState(() => _selected = saved);
   }
 
   Future<void> _useLive() async {
